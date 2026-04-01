@@ -29,6 +29,11 @@ async fn main() {
 
     dotenvy::dotenv().ok();
 
+    let pool = db::connection::create_pool().await
+        .expect("failed to connect to Postgres");
+
+    tracing::info!("database pool created successfully");
+
     let app = Router::new()
         .route("/", get(|| async { "Qwew backend is running" }))
         .route("/ws", get(ws_handler))
