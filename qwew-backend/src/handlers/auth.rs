@@ -1,17 +1,23 @@
 use axum::{Json, Extension, http::StatusCode};
 use sqlx::PgPool;
 use crate::models::user::{CreateUserRequest, AuthResponse, User};
-use argon2::{self, Argon2, PasswordHasher, PasswordVerifier, password_hash::SaltString};
-use rand::rngs::OsRng;
+use crate::config::AppConfig;
+use crate::utils::jwt::generate_token;
+use argon2::{
+    password_hash::{rand_core::OsRng, SaltString},
+    Argon2, PasswordHasher,
+};
 
 pub async fn register(
     Extension(pool): Extension<PgPool>,
+    Extension(config): Extension<AppConfig>,   // ← New
     Json(payload): Json<CreateUserRequest>,
 ) -> Result<Json<AuthResponse>, StatusCode> {
     
-    // TODO: add proper validation
+    if payload.username.len() < 3 || payload.username.len() > 30 {
+        return Err(StatusCode::BAD_REQUEST);
+    }
 
-    // hash the password securely
     let salt = SaltString::generate(&mut OsRng);
     let argon2 = Argon2::default();
     let password_hash = argon2
@@ -19,7 +25,6 @@ pub async fn register(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
         .to_string();
 
-    // insert user into database
     let user: User = sqlx::query_as(
         r#"
         INSERT INTO users (username, password_hash)
@@ -27,24 +32,24 @@ pub async fn register(
         RETURNING id, username, password_hash, created_at, last_seen_at
         "#
     )
-    .bind(payload.username.clone())
-    .bind(password_hash)
+    .bind(&payload.username)
+    .bind(&password_hash)
     .fetch_one(&pool)
     .await
     .map_err(|e| {
         tracing::error!("Failed to create user: {}", e);
-        if e.to_string().contains("unique") {
-            StatusCode::CONFLICT // already taken
+        if e.to_string().contains("unique") || e.to_string().contains("duplicate") {
+            StatusCode::CONFLICT
         } else {
             StatusCode::INTERNAL_SERVER_ERROR
         }
     })?;
 
-    // TODO: generate JWT token later
+    let token = generate_token(user.id, user.username.clone(), &config);
 
     Ok(Json(AuthResponse {
         user_id: user.id,
         username: user.username,
-        token: "temporary_token".to_string(), // placeholder for now
+        token,
     }))
 }

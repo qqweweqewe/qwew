@@ -30,6 +30,8 @@ async fn main() {
 
     dotenvy::dotenv().ok();
 
+    let config = config::AppConfig::from_env();
+
     let pool = db::connection::create_pool().await
         .expect("failed to connect to PostgreSQL. Is the Docker container running?");
 
@@ -41,6 +43,7 @@ async fn main() {
         .route("/auth/register", axum::routing::post(handlers::auth::register))
 
         .layer(Extension(pool))
+        .layer(Extension(config))
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http());
 

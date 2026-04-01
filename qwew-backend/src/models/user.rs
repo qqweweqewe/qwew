@@ -32,3 +32,11 @@ pub struct AuthResponse {
     pub username: String,
     pub token: String,
 }
+
+// JWT claims
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Claims {
+    pub sub: i64,
+    pub username: String,
+    pub exp: usize,
+}
