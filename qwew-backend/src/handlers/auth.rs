@@ -1,6 +1,7 @@
+use argon2::{PasswordHash, PasswordVerifier};
 use axum::{Json, Extension, http::StatusCode};
 use sqlx::PgPool;
-use crate::models::user::{CreateUserRequest, AuthResponse, User};
+use crate::models::user::{AuthResponse, CreateUserRequest, LoginRequest, User};
 use crate::config::AppConfig;
 use crate::utils::jwt::generate_token;
 use argon2::{
@@ -52,4 +53,44 @@ pub async fn register(
         username: user.username,
         token,
     }))
+}
+
+pub async fn login(
+    Extension(pool): Extension<PgPool>,
+    Extension(config): Extension<AppConfig>,
+    Json(payload): Json<LoginRequest>
+) -> Result<Json<AuthResponse>, StatusCode> {
+
+    // get user
+    let user: User = sqlx::query_as(
+        r#"
+        SELECT id, username, password_hash, created_at, last_seen_at
+        FROM users
+        WHERE username = $1
+        "#
+    ).bind(&payload.username)
+    .fetch_one(&pool)
+    .await
+    .map_err(|_| StatusCode::UNAUTHORIZED)?;
+
+    // verify passwd
+    let parsed_hash = PasswordHash::new(&user.password_hash).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let argon2 = Argon2::default();
+
+    if argon2.verify_password(&payload.password.as_bytes(), &parsed_hash).is_err() {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+
+    let token = generate_token(user.id, user.username.clone(), &config);
+
+    Ok(
+        Json(
+            AuthResponse { 
+                user_id: user.id, 
+                username: user.username, 
+                token 
+            }
+        )
+    )
 }

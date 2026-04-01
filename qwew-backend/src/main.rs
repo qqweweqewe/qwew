@@ -1,9 +1,5 @@
 use axum::{
-    extract::ws::{WebSocket, WebSocketUpgrade},
-    response::Response,
-    routing::get,
-    Router,
-    Extension,
+    Extension, Router, extract::ws::{WebSocket, WebSocketUpgrade}, response::Response, routing::{get, post}
 };
 use std::net::SocketAddr;
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
@@ -40,7 +36,9 @@ async fn main() {
     let app = Router::new()
         .route("/", get(|| async { "Qwew backend is running" }))
         .route("/ws", get(ws_handler))
+
         .route("/auth/register", axum::routing::post(handlers::auth::register))
+        .route("/auth/login", post(handlers::auth::login))
 
         .layer(Extension(pool))
         .layer(Extension(config))
