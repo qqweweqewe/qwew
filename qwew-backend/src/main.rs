@@ -3,6 +3,7 @@ use axum::{
     response::Response,
     routing::get,
     Router,
+    Extension,
 };
 use std::net::SocketAddr;
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
@@ -30,13 +31,16 @@ async fn main() {
     dotenvy::dotenv().ok();
 
     let pool = db::connection::create_pool().await
-        .expect("failed to connect to Postgres");
+        .expect("failed to connect to PostgreSQL. Is the Docker container running?");
 
     tracing::info!("database pool created successfully");
 
     let app = Router::new()
         .route("/", get(|| async { "Qwew backend is running" }))
         .route("/ws", get(ws_handler))
+        .route("/auth/register", axum::routing::post(handlers::auth::register))
+
+        .layer(Extension(pool))
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http());
 
@@ -47,12 +51,17 @@ async fn main() {
     axum::serve(listener, app).await.unwrap();
 }
 
-async fn ws_handler(ws: WebSocketUpgrade) -> Response {
-    ws.on_upgrade(handle_socket)
+async fn ws_handler(
+    ws: WebSocketUpgrade,
+    Extension(pool): Extension<db::PgPool>,
+) -> Response {
+    ws.on_upgrade(move |socket| handle_socket(socket, pool))
 }
 
-async fn handle_socket(mut socket: WebSocket) {
+async fn handle_socket(mut socket: WebSocket, pool: db::PgPool) {
     tracing::info!("new WebSocket client connected");
+
+    // TODO: auth
 
     while let Some(msg) = socket.recv().await {
         match msg {
