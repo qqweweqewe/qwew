@@ -1,10 +1,9 @@
 use axum::{
-    extract::ws::{WebSocket, WebSocketUpgrade},
-    response::Response,
     routing::{get, post},
     Router, Extension,
 };
-use std::net::SocketAddr;
+use std::{collections::HashMap, net::SocketAddr, sync::Arc};
+use tokio::sync::RwLock;
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -35,17 +34,20 @@ async fn main() {
 
     tracing::info!("database pool created successfully");
 
+    let connected_users: ws::ConnectedUsers = Arc::new(RwLock::new(HashMap::new()));
+
     let app = Router::new()
         .route("/", get(|| async { "Qwew backend is running" }))
-        
+
         // auth routes
         .route("/auth/register", post(handlers::auth::register))
         .route("/auth/login", post(handlers::auth::login))
         .route("/auth/me", get(handlers::auth::get_me))
 
         // WebSocket
-        .route("/ws", get(ws_handler))
+        .route("/ws", get(ws::ws_handler))
 
+        .layer(Extension(connected_users))
         .layer(Extension(pool))
         .layer(Extension(config))
         .layer(CorsLayer::permissive())
@@ -61,21 +63,4 @@ async fn main() {
         .unwrap();
 }
 
-async fn ws_handler(
-    ws: WebSocketUpgrade,
-    Extension(pool): Extension<db::PgPool>,
-) -> Response {
-    ws.on_upgrade(move |socket| handle_socket(socket, pool))
-}
 
-async fn handle_socket(mut socket: WebSocket, _pool: db::PgPool) {
-    tracing::info!("new WebSocket client connected");
-
-    while let Some(msg) = socket.recv().await {
-        if let Ok(msg) = msg {
-            let _ = socket.send(msg).await;
-        }
-    }
-
-    tracing::info!("WebSocket client disconnected");
-}
