@@ -1,3 +1,5 @@
+pub mod tickets;
+
 use std::{collections::HashMap, sync::Arc};
 use axum::{
     extract::{ws::{Message, WebSocket, WebSocketUpgrade}, Query},
@@ -7,25 +9,25 @@ use axum::{
 use tokio::sync::{mpsc, RwLock};
 use futures_util::{StreamExt, SinkExt};
 use serde::Deserialize;
-use crate::{config::AppConfig, utils::jwt};
+use tickets::WsTickets;
 
 pub type ConnectedUsers = Arc<RwLock<HashMap<i64, mpsc::UnboundedSender<Message>>>>;
 
 #[derive(Deserialize)]
 pub struct WsQuery {
-    token: String,
+    ticket: String,
 }
 
 pub async fn ws_handler(
     ws: WebSocketUpgrade,
     Query(query): Query<WsQuery>,
-    Extension(config): Extension<AppConfig>,
+    Extension(tickets): Extension<WsTickets>,
     Extension(users): Extension<ConnectedUsers>,
 ) -> Result<Response, StatusCode> {
-    let claims = jwt::decode_token(&query.token, &config)
-        .map_err(|_| StatusCode::UNAUTHORIZED)?;
+    let ticket = tickets::redeem_ticket(&query.ticket, &tickets).await
+        .ok_or(StatusCode::UNAUTHORIZED)?;
 
-    Ok(ws.on_upgrade(move |socket| handle_socket(socket, claims.sub, claims.username, users)))
+    Ok(ws.on_upgrade(move |socket| handle_socket(socket, ticket.user_id, ticket.username, users)))
 }
 
 async fn handle_socket(socket: WebSocket, user_id: i64, username: String, users: ConnectedUsers) {

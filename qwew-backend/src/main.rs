@@ -4,6 +4,7 @@ use axum::{
 };
 use std::{collections::HashMap, net::SocketAddr, sync::Arc};
 use tokio::sync::RwLock;
+use ws::tickets::WsTickets;
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -35,6 +36,7 @@ async fn main() {
     tracing::info!("database pool created successfully");
 
     let connected_users: ws::ConnectedUsers = Arc::new(RwLock::new(HashMap::new()));
+    let ws_tickets: WsTickets = Arc::new(RwLock::new(HashMap::new()));
 
     let app = Router::new()
         .route("/", get(|| async { "Qwew backend is running" }))
@@ -45,8 +47,10 @@ async fn main() {
         .route("/auth/me", get(handlers::auth::get_me))
 
         // WebSocket
+        .route("/ws/ticket", post(handlers::ws::issue_ticket))
         .route("/ws", get(ws::ws_handler))
 
+        .layer(Extension(ws_tickets))
         .layer(Extension(connected_users))
         .layer(Extension(pool))
         .layer(Extension(config))
