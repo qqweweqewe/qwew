@@ -1,5 +1,8 @@
 use axum::{
-    Extension, Router, extract::ws::{WebSocket, WebSocketUpgrade}, response::Response, routing::{get, post}
+    extract::ws::{WebSocket, WebSocketUpgrade},
+    response::Response,
+    routing::{get, post},
+    Router, Extension,
 };
 use std::net::SocketAddr;
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
@@ -22,23 +25,26 @@ async fn main() {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    tracing::info!("==! starting Qwew backend !==");
+    tracing::info!("== starting Qwew backend ==");
 
     dotenvy::dotenv().ok();
 
     let config = config::AppConfig::from_env();
-
     let pool = db::connection::create_pool().await
-        .expect("failed to connect to PostgreSQL. Is the Docker container running?");
+        .expect("failed to connect to PostgreSQL. make sure to start the container");
 
     tracing::info!("database pool created successfully");
 
     let app = Router::new()
         .route("/", get(|| async { "Qwew backend is running" }))
-        .route("/ws", get(ws_handler))
-
-        .route("/auth/register", axum::routing::post(handlers::auth::register))
+        
+        // auth routes
+        .route("/auth/register", post(handlers::auth::register))
         .route("/auth/login", post(handlers::auth::login))
+        .route("/auth/me", get(handlers::auth::get_me))
+
+        // WebSocket
+        .route("/ws", get(ws_handler))
 
         .layer(Extension(pool))
         .layer(Extension(config))
@@ -46,10 +52,13 @@ async fn main() {
         .layer(TraceLayer::new_for_http());
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 3000));
-    tracing::info!("listening on http://{}", addr);
+    tracing::info!("server listening on http://{}", addr);
 
     let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
-    axum::serve(listener, app).await.unwrap();
+
+    axum::serve(listener, app)
+        .await
+        .unwrap();
 }
 
 async fn ws_handler(
@@ -59,23 +68,12 @@ async fn ws_handler(
     ws.on_upgrade(move |socket| handle_socket(socket, pool))
 }
 
-async fn handle_socket(mut socket: WebSocket, pool: db::PgPool) {
+async fn handle_socket(mut socket: WebSocket, _pool: db::PgPool) {
     tracing::info!("new WebSocket client connected");
 
-    // TODO: auth
-
     while let Some(msg) = socket.recv().await {
-        match msg {
-            Ok(msg) => {
-                if let Err(e) = socket.send(msg).await {
-                    tracing::error!("WebSocket send error: {}", e);
-                    break;
-                }
-            }
-            Err(e) => {
-                tracing::error!("WebSocket error: {}", e);
-                break;
-            }
+        if let Ok(msg) = msg {
+            let _ = socket.send(msg).await;
         }
     }
 

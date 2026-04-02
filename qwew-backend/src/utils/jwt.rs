@@ -5,9 +5,9 @@ use crate::config::AppConfig;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {
-    pub sub: i64,           // user id
+    pub sub: i64,
     pub username: String,
-    pub exp: usize,         // expiration time
+    pub exp: usize,
 }
 
 pub fn generate_token(user_id: i64, username: String, config: &AppConfig) -> String {
