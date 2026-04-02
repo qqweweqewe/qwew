@@ -3,6 +3,7 @@ use axum::{Json, Extension, http::StatusCode};
 use sqlx::PgPool;
 use crate::models::user::{AuthResponse, CreateUserRequest, LoginRequest, User};
 use crate::handlers::extractors::CurrentUser;
+use serde_json::json;
 use crate::config::AppConfig;
 use crate::utils::jwt::generate_token;
 use argon2::{
@@ -96,8 +97,10 @@ pub async fn login(
     )
 }
 
-pub async fn get_me(current_user: CurrentUser) -> Result<Json<serde_json::Value>, StatusCode> {
-    Ok(Json(serde_json::json!({
+pub async fn get_me(
+    current_user: CurrentUser,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    Ok(Json(json!({
         "success": true,
         "user_id": current_user.user_id,
         "username": current_user.username,

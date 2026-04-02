@@ -2,9 +2,9 @@ use axum::{
     async_trait,
     extract::FromRequestParts,
     http::{request::Parts, StatusCode},
+    Extension,
 };
 use crate::config::AppConfig;
-use crate::utils::jwt::Claims;
 
 #[derive(Debug)]
 pub struct CurrentUser {
@@ -13,32 +13,35 @@ pub struct CurrentUser {
 }
 
 #[async_trait]
-impl FromRequestParts<AppConfig> for CurrentUser {
+impl<S> FromRequestParts<S> for CurrentUser
+where
+    S: Send + Sync,
+{
     type Rejection = StatusCode;
 
     async fn from_request_parts(
         parts: &mut Parts,
-        config: &AppConfig,
+        state: &S,
     ) -> Result<Self, Self::Rejection> {
-        
+        let Extension(config) = Extension::<AppConfig>::from_request_parts(parts, state)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
         let auth_header = parts.headers
             .get("authorization")
-            .and_then(|v| v.to_str().ok());
+            .and_then(|value| value.to_str().ok());
 
         let token = match auth_header {
-            Some(h) if h.starts_with("Bearer ") => &h[7..].trim(),
+            Some(header) if header.starts_with("Bearer ") => &header[7..].trim(),
             _ => return Err(StatusCode::UNAUTHORIZED),
         };
 
-        match crate::utils::jwt::decode_token(token, config) {
+        match crate::utils::jwt::decode_token(token, &config) {
             Ok(claims) => Ok(CurrentUser {
                 user_id: claims.sub,
                 username: claims.username,
             }),
-            Err(e) => {
-                tracing::warn!("JWT decode failed: {}", e);
-                Err(StatusCode::UNAUTHORIZED)
-            }
+            Err(_) => Err(StatusCode::UNAUTHORIZED),
         }
     }
 }
