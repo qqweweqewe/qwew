@@ -46,6 +46,13 @@ async fn main() {
         .route("/auth/login", post(handlers::auth::login))
         .route("/auth/me", get(handlers::auth::get_me))
 
+        // invites
+        .route("/invites", post(handlers::invites::create_invite))
+
+        // messages
+        .route("/conversations", get(handlers::messages::get_conversations))
+        .route("/conversations/:id/messages", get(handlers::messages::get_history))
+
         // WebSocket
         .route("/ws/ticket", post(handlers::ws::issue_ticket))
         .route("/ws", get(ws::ws_handler))

@@ -16,6 +16,7 @@ pub struct User {
 pub struct CreateUserRequest {
     pub username: String,
     pub password: String,
+    pub invite_code: String,
 }
 
 // for login

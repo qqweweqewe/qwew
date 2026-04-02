@@ -21,7 +21,7 @@ impl IntoResponse for AppError {
 
 pub async fn register(
     Extension(pool): Extension<PgPool>,
-    Extension(config): Extension<AppConfig>,   // ← New
+    Extension(config): Extension<AppConfig>,
     Json(payload): Json<CreateUserRequest>,
 ) -> Result<Json<AuthResponse>, AppError> {
 
@@ -36,25 +36,54 @@ pub async fn register(
         .map_err(|_| AppError(StatusCode::INTERNAL_SERVER_ERROR, "internal error"))?
         .to_string();
 
+    let mut tx = pool.begin().await
+        .map_err(|e| { tracing::error!("register: failed to begin tx: {}", e); AppError(StatusCode::INTERNAL_SERVER_ERROR, "internal error") })?;
+
+    // validate + consume invite (lazy expiry cleanup included)
+    let invite_valid: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM invites WHERE code = $1 AND used_by IS NULL AND (expires_at IS NULL OR expires_at > NOW()))"
+    )
+    .bind(&payload.invite_code)
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(|e| { tracing::error!("register: invite check failed: {}", e); AppError(StatusCode::INTERNAL_SERVER_ERROR, "internal error") })?;
+
+    if !invite_valid {
+        // lazy cleanup of expired invites
+        let _ = sqlx::query("DELETE FROM invites WHERE expires_at IS NOT NULL AND expires_at <= NOW()")
+            .execute(&mut *tx).await;
+        let _ = tx.rollback().await;
+        tracing::warn!("register: invalid or expired invite code used: {}", payload.invite_code);
+        return Err(AppError(StatusCode::BAD_REQUEST, "invalid or expired invite code"));
+    }
+
     let user: User = sqlx::query_as(
-        r#"
-        INSERT INTO users (username, password_hash)
-        VALUES ($1, $2)
-        RETURNING id, username, password_hash, created_at, last_seen_at
-        "#
+        "INSERT INTO users (username, password_hash) VALUES ($1, $2) RETURNING id, username, password_hash, created_at, last_seen_at"
     )
     .bind(&payload.username)
     .bind(&password_hash)
-    .fetch_one(&pool)
+    .fetch_one(&mut *tx)
     .await
     .map_err(|e| {
-        tracing::error!("Failed to create user: {}", e);
         if e.to_string().contains("unique") || e.to_string().contains("duplicate") {
+            tracing::warn!("register: username already taken: {}", payload.username);
             AppError(StatusCode::CONFLICT, "username already taken")
         } else {
+            tracing::error!("register: db error: {}", e);
             AppError(StatusCode::INTERNAL_SERVER_ERROR, "internal error")
         }
     })?;
+
+    // mark invite as used
+    sqlx::query("UPDATE invites SET used_by = $1, used_at = NOW() WHERE code = $2")
+        .bind(user.id)
+        .bind(&payload.invite_code)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| { tracing::error!("register: failed to consume invite: {}", e); AppError(StatusCode::INTERNAL_SERVER_ERROR, "internal error") })?;
+
+    tx.commit().await
+        .map_err(|e| { tracing::error!("register: failed to commit tx: {}", e); AppError(StatusCode::INTERNAL_SERVER_ERROR, "internal error") })?;
 
     let token = generate_token(user.id, user.username.clone(), &config);
 
