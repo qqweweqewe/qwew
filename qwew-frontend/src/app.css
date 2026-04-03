@@ -1,0 +1,38 @@
+:root {
+  /* gruvbox dark */
+  --bg:         #1d2021;
+  --surface:    #282828;
+  --surface-hi: #3c3836;
+  --border:     #504945;
+  --text:       #ebdbb2;
+  --text-muted: #928374;
+  --accent:     #d79921;   /* gruvbox yellow */
+  --accent-dim: #b57614;
+  --green:      #98971a;
+  --red:        #cc241d;
+  --blue:       #458588;
+  --orange:     #d65d0e;
+  --error:      #fb4934;   /* gruvbox bright red */
+
+  font-family: "JetBrains Mono", "Fira Code", "Cascadia Code", monospace;
+  font-size: 14px;
+  color: var(--text);
+  background: var(--bg);
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  height: 100vh;
+  overflow: hidden;
+}
+
+::-webkit-scrollbar { width: 3px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); }

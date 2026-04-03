@@ -49,6 +49,9 @@ async fn main() {
         // invites
         .route("/invites", post(handlers::invites::create_invite))
 
+        // users
+        .route("/users/search", get(handlers::users::search_users))
+
         // messages
         .route("/conversations", get(handlers::messages::get_conversations))
         .route("/conversations/:id/messages", get(handlers::messages::get_history))
