@@ -7,11 +7,16 @@ use axum::{
     Extension, http::StatusCode,
 };
 use tokio::sync::{mpsc, RwLock};
+use tokio::time::{timeout, Duration};
 use futures_util::{StreamExt, SinkExt};
 use serde::Deserialize;
 use sqlx::PgPool;
+use chrono::Utc;
 use tickets::WsTickets;
 use crate::models::message::{ClientEvent, ServerEvent};
+
+const PING_INTERVAL: Duration = Duration::from_secs(30);
+const PONG_TIMEOUT: Duration  = Duration::from_secs(10);
 
 pub type ConnectedUsers = Arc<RwLock<HashMap<i64, mpsc::UnboundedSender<Message>>>>;
 
@@ -40,9 +45,31 @@ async fn handle_socket(socket: WebSocket, user_id: i64, username: String, users:
     users.write().await.insert(user_id, tx);
     tracing::info!("{} (id={}) connected", username, user_id);
 
+    // send Hello immediately so the frontend can confirm identity + sync clock on reconnect
+    let hello = serde_json::to_string(&ServerEvent::Hello {
+        user_id,
+        server_time: Utc::now(),
+    }).unwrap();
+    let _ = sink.send(Message::Text(hello.into())).await;
+
     let send_task = tokio::spawn(async move {
         while let Some(msg) = rx.recv().await {
             if sink.send(msg).await.is_err() {
+                break;
+            }
+        }
+    });
+
+    // ping task: fires every PING_INTERVAL, expects a Pong back within PONG_TIMEOUT
+    // if no pong arrives the socket is considered dead — we drop the tx which closes send_task
+    let (pong_tx, mut pong_rx) = mpsc::unbounded_channel::<()>();
+    let users_ping = users.clone();
+    let ping_task = tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(PING_INTERVAL).await;
+            send_event(&users_ping, user_id, &ServerEvent::Ping).await;
+            if timeout(PONG_TIMEOUT, pong_rx.recv()).await.is_err() {
+                tracing::warn!("ws: user={} pong timeout, closing", user_id);
                 break;
             }
         }
@@ -65,9 +92,13 @@ async fn handle_socket(socket: WebSocket, user_id: i64, username: String, users:
             ClientEvent::MarkRead { conversation_id } => {
                 handle_mark_read(&pool, &users, user_id, conversation_id).await;
             }
+            ClientEvent::Pong => {
+                let _ = pong_tx.send(());
+            }
         }
     }
 
+    ping_task.abort();
     send_task.abort();
     users.write().await.remove(&user_id);
     tracing::info!("{} (id={}) disconnected", username, user_id);

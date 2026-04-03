@@ -36,12 +36,18 @@ pub enum ClientEvent {
     MarkRead {
         conversation_id: i64,
     },
+    Pong,
 }
 
 // outgoing WS events to client
 #[derive(Debug, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ServerEvent<'a> {
+    // sent immediately on connect so the frontend can confirm identity + sync clock
+    Hello {
+        user_id: i64,
+        server_time: DateTime<Utc>,
+    },
     NewMessage {
         message: &'a Message,
     },
@@ -49,6 +55,8 @@ pub enum ServerEvent<'a> {
         conversation_id: i64,
         reader_id: i64,
     },
+    // server-initiated keepalive — frontend must respond with { "type": "pong" }
+    Ping,
     Error {
         reason: &'a str,
     },

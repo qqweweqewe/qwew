@@ -1,3 +1,7 @@
+// INSERT INTO invites (code, created_by, expires_at)
+// VALUES ('bootstrap', 1, NOW() + INTERVAL '1 year');
+// that's needed
+
 use axum::{Extension, Json, http::StatusCode};
 use sqlx::PgPool;
 use chrono::{Utc, Duration};
