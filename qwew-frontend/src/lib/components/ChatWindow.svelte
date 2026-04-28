@@ -25,7 +25,6 @@
     const content = input.trim();
     if (!content || recipientId === null) return;
     app.sendMessage(recipientId, content);
-    app.pendingRecipient = null;
     input = "";
   }
 

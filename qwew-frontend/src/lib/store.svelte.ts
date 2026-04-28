@@ -89,7 +89,13 @@ class AppState {
             convo.unread_count++;
           }
         } else {
-          this.loadConversations();
+          this.loadConversations().then(() => {
+            const newConvo = this.conversations.find(c => c.id === msg.conversation_id);
+            if (newConvo) {
+              this.activeConversationId = newConvo.id;
+              this.pendingRecipient = null;
+            }
+          });
         }
       }
 

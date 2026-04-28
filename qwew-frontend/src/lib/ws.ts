@@ -50,7 +50,7 @@ export class WsClient {
 
     try {
       const { ticket } = await api.getWsTicket(this.token);
-      const ws = new WebSocket(`ws://localhost:3000/ws?ticket=${ticket}`);
+      const ws = new WebSocket(`ws://qwew.space:3000/ws?ticket=${ticket}`);
       this.ws = ws;
 
       ws.onopen = () => { this.backoff = BACKOFF_INITIAL; };
