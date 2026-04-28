@@ -1,6 +1,7 @@
 use axum::{extract::Query, Extension, Json, http::StatusCode};
 use sqlx::PgPool;
 use serde::{Deserialize, Serialize};
+use sqlx::FromRow;
 use crate::handlers::extractors::CurrentUser;
 
 #[derive(Deserialize)]
@@ -8,7 +9,7 @@ pub struct SearchQuery {
     q: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, FromRow)]
 pub struct UserResult {
     pub user_id: i64,
     pub username: String,
@@ -23,8 +24,7 @@ pub async fn search_users(
         return Ok(Json(vec![]));
     }
 
-    let results = sqlx::query_as!(
-        UserResult,
+    let results = sqlx::query_as(
         r#"
         SELECT id AS user_id, username
         FROM users
@@ -33,9 +33,9 @@ pub async fn search_users(
         ORDER BY username
         LIMIT 20
         "#,
-        format!("{}%", query.q.trim()),
-        current_user.user_id,
     )
+    .bind(format!("{}%", query.q.trim()))
+    .bind(current_user.user_id)
     .fetch_all(&pool)
     .await
     .map_err(|e| {
